@@ -1,0 +1,49 @@
+{
+  "version": "0.117.0",
+  "origin": "https://github.com/nushell/nushell",
+  "source": "https://static.crates.io/crates/nu/nu-0.117.0.crate",
+  "sha256": "136fc734fe97c961c84d1d5b77c629b36a15ca24204b2d62dcd7920ed0d56e29",
+  "image": "docker.io/library/rust@sha256:c5d6b2e15a5d94ee3ec8494c1ab0cbb8a12440bbe4dc9e5e3b4b0624d2efd668",
+  "toolchain": "Rust/Cargo 1.97.1, Alpine 3.24, x86_64-unknown-linux-musl",
+  "fetch": [
+    "cargo",
+    "fetch",
+    "--locked",
+    "--target",
+    "x86_64-unknown-linux-musl"
+  ],
+  "build": [
+    "cargo",
+    "build",
+    "--frozen",
+    "--release",
+    "--target",
+    "x86_64-unknown-linux-musl",
+    "--bin",
+    "nu",
+    "--no-default-features",
+    "--jobs",
+    "6"
+  ],
+  "files": {
+    "nu": "target/x86_64-unknown-linux-musl/release/nu"
+  },
+  "checks": [
+    {
+      "run": [
+        "nu",
+        "--version"
+      ],
+      "stdout": "0.117.0"
+    },
+    {
+      "run": [
+        "nu",
+        "--no-config-file",
+        "-c",
+        "[1 2 3] | math sum"
+      ],
+      "stdout": "6"
+    }
+  ]
+}
