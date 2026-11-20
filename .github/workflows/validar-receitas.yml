@@ -1,0 +1,60 @@
+name: Validar receitas do Melkor
+
+on:
+  pull_request:
+    paths:
+      - 'recipes/**'
+      - '.github/workflows/validar-receitas.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  receitas:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Baixar e verificar o código do validador
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VALIDADOR_TAG: ${{ vars.MELKOR_VALIDADOR_TAG }}
+          VALIDADOR_SHA256: ${{ vars.MELKOR_VALIDADOR_SHA256 }}
+        run: |
+          if [[ ! "$VALIDADOR_TAG" =~ ^ci-validador-v[0-9]+\.[0-9]+\.[0-9]+$ ||
+                ! "$VALIDADOR_SHA256" =~ ^[a-f0-9]{64}$ ]]; then
+            echo 'Configure a tag e o SHA-256 do validador na CI.' >&2
+            exit 1
+          fi
+          export VALIDADOR_DIR="$RUNNER_TEMP/melkor-validador"
+          mkdir -p "$VALIDADOR_DIR"
+          gh release download "$VALIDADOR_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern melkor-cli.tar.gz --dir "$VALIDADOR_DIR"
+          cd "$VALIDADOR_DIR"
+          printf '%s  melkor-cli.tar.gz\n' "$VALIDADOR_SHA256" | sha256sum -c -
+          tar -xzf melkor-cli.tar.gz
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.4'
+          cache: false
+      - name: Preparar o CLI e o Podman rootless
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y podman uidmap slirp4netns
+          cd "$RUNNER_TEMP/melkor-validador/apps"
+          CGO_ENABLED=0 GOTOOLCHAIN=local go build -trimpath -o "$RUNNER_TEMP/melkor" .
+      - name: Validar o catálogo e testar receitas alteradas
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          CLI="$RUNNER_TEMP/melkor"
+          export MELKOR_PERFIL="$RUNNER_TEMP/melkor-perfil"
+          "$CLI" catalogo validar recipes
+          git diff --name-only --diff-filter=AMR -z "$BASE_SHA" HEAD -- recipes/ > "$RUNNER_TEMP/receitas-alteradas"
+          while IFS= read -r -d '' arquivo; do
+            nome=${arquivo#recipes/}
+            "$CLI" receita testar "${nome%.json}" "$arquivo"
+          done < "$RUNNER_TEMP/receitas-alteradas"
